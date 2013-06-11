@@ -1,7 +1,4 @@
-/*=========================================================================
-
-  Program:   Open IGT Link -- Example for Tracker Server Program
-  Module:    $RCSfile: $
+ Module:    $RCSfile: $
   Language:  C++
   Date:      $Date: $
   Version:   $Revision: $
@@ -362,11 +359,13 @@ int main(int argc, char* argv[])
 				
 				//IGT Matrix type to send the data to 3D Slicer
 				igtl::Matrix4x4 matrix;
-				
+				double tmpDouble;
 				//reinterpret the data
 				for( int m = 0; m<3; m++){
 					for(int n =0; n<4; n++){
-						memcpy(&matrix[m][n],&bufferRecievefrmRobot[2+(m+n)*sizeof(double)],sizeof(double));
+						memcpy(&tmpDouble,&bufferRecievefrmRobot[2+(m*4+n)*sizeof(double)],sizeof(double));
+						std::cerr<< "tmpDouble:" <<tmpDouble<<std::endl;
+						matrix[m][n] = tmpDouble;
 					}
 				}
 				matrix[3][0] = 0;
@@ -376,10 +375,10 @@ int main(int argc, char* argv[])
 				transMsg->SetMatrix(matrix);
 				transMsg->Pack();
 				std::cerr<< "T_Current Pose:" <<std::endl;
-				std::cerr<<matrix[0][0] <<" Y " << matrix[0][1] << "Z" <<matrix[0][2] << std::endl;
-				std::cerr <<  matrix[1][0] <<" Y " << RegPoints[1][1] << "Z" <<matrix[1][2] << std::endl;
-				std::cerr <<  matrix[2][0] <<" Y " << RegPoints[2][1] << "Z" <<matrix[2][2] << std::endl;
-				std::cerr <<  matrix[3][0] <<" Y " << RegPoints[3][1] << "Z" <<matrix[3][2] << std::endl;
+				std::cerr<<matrix[0][0] <<" Y " << matrix[0][1] << "Z" <<matrix[0][2] <<matrix[0][3] << std::endl;
+				std::cerr <<  matrix[1][0] <<" Y " << matrix[1][1] << "Z" <<matrix[1][2] <<matrix[1][3] << std::endl;
+				std::cerr <<  matrix[2][0] <<" Y " << matrix[2][1] << "Z" <<matrix[2][2] << matrix[2][3] <<std::endl;
+				std::cerr <<  matrix[3][0] <<" Y " << matrix[3][1] << "Z" <<matrix[3][2] <<matrix[3][3] << std::endl;
 				//SlicerSocket->Send(transMsg->GetPackPointer(), transMsg->GetPackSize());
 
 			}else if (RcvDataType == 'R'){ //Registration Points from Robot
@@ -387,7 +386,7 @@ int main(int argc, char* argv[])
 				//reinterpret the data
 				for( int m = 0; m<pointstoregister; m++){
 					for(int n =0; n<3; n++){
-						memcpy(&RegPoints[m][n],&bufferRecievefrmRobot[2+(m+n)*sizeof(double)],sizeof(double));
+						memcpy(&RegPoints[m][n],&bufferRecievefrmRobot[2+(m*3+n)*sizeof(double)],sizeof(double));
 						//std::cerr<<bufferRecievefrmRobot[2+m*sizeof(double) + n];
 					}
 				}
