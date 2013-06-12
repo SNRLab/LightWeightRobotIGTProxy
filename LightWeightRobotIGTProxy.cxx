@@ -1,4 +1,4 @@
- Module:    $RCSfile: $
+ /*Module:    $RCSfile: $
   Language:  C++
   Date:      $Date: $
   Version:   $Revision: $
@@ -258,7 +258,7 @@ int main(int argc, char* argv[])
 						for (j=0; j<sizeof(double); j++) bufferSendtoRobot[2+q*sizeof(double)+j] = tmpArr[j];
 					}
 					SendData_size = 2+12*sizeof(double);
-					RcvData_size = 3;
+					RcvData_size = 4;
 
 					break;
 				case 4: //GravComp
@@ -301,7 +301,7 @@ int main(int argc, char* argv[])
 					bufferSendtoRobot[0] = 'S';
 					bufferSendtoRobot[1] = mState;
 					SendData_size = 2;
-					RcvData_size = 2 + 12*sizeof(double);
+					RcvData_size = 3 + 12*sizeof(double);
 					break;
 				case 7: // NavGravCompVF
 					bufferSendtoRobot[0] = 'S';
@@ -332,7 +332,7 @@ int main(int argc, char* argv[])
 						for (j=0; j<sizeof(double); j++) bufferSendtoRobot[3+6*sizeof(double)+j] = tmpArr[j];
 					}
 					SendData_size = 3+7*sizeof(double);
-					RcvData_size = 2 + 12*sizeof(double);
+					RcvData_size = 3 + 12*sizeof(double);
 					break;
 				default:
 					break;
@@ -348,10 +348,9 @@ int main(int argc, char* argv[])
 			std::cerr <<"Datatype Recieved"<< RcvDataType<< std::endl;
 			mRcvState = bufferRecievefrmRobot[1];
 			
-			if(mState!=mRcvState){
+			if(bufferRecievefrmRobot[2]!=0){
 					//Some Debugging
 					std::cerr << "Cannot change State to " << mState << std::endl;
-					std::cerr <<"Recieved State: " <<bufferRecievefrmRobot[1]<<" Transfered to: " <<mRcvState << std::endl;
 
 			}
 			//Datatype is Transform
@@ -363,8 +362,7 @@ int main(int argc, char* argv[])
 				//reinterpret the data
 				for( int m = 0; m<3; m++){
 					for(int n =0; n<4; n++){
-						memcpy(&tmpDouble,&bufferRecievefrmRobot[2+(m*4+n)*sizeof(double)],sizeof(double));
-						std::cerr<< "tmpDouble:" <<tmpDouble<<std::endl;
+						memcpy(&tmpDouble,&bufferRecievefrmRobot[3+(m*4+n)*sizeof(double)],sizeof(double));
 						matrix[m][n] = tmpDouble;
 					}
 				}
@@ -375,10 +373,10 @@ int main(int argc, char* argv[])
 				transMsg->SetMatrix(matrix);
 				transMsg->Pack();
 				std::cerr<< "T_Current Pose:" <<std::endl;
-				std::cerr<<matrix[0][0] <<" Y " << matrix[0][1] << "Z" <<matrix[0][2] <<matrix[0][3] << std::endl;
-				std::cerr <<  matrix[1][0] <<" Y " << matrix[1][1] << "Z" <<matrix[1][2] <<matrix[1][3] << std::endl;
-				std::cerr <<  matrix[2][0] <<" Y " << matrix[2][1] << "Z" <<matrix[2][2] << matrix[2][3] <<std::endl;
-				std::cerr <<  matrix[3][0] <<" Y " << matrix[3][1] << "Z" <<matrix[3][2] <<matrix[3][3] << std::endl;
+				std::cerr<<matrix[0][0] <<"	" << matrix[0][1] << "	"     <<matrix[0][2] <<"	" <<matrix[0][3] << std::endl;
+				std::cerr <<  matrix[1][0] <<"	" << matrix[1][1] << "	" <<matrix[1][2] <<"	" <<matrix[1][3] << std::endl;
+				std::cerr <<  matrix[2][0] <<"	" << matrix[2][1] << "	" <<matrix[2][2] <<"	" << matrix[2][3] <<std::endl;
+				std::cerr <<  matrix[3][0] <<"	" << matrix[3][1] << "	" <<matrix[3][2] <<"	" <<matrix[3][3] << std::endl;
 				//SlicerSocket->Send(transMsg->GetPackPointer(), transMsg->GetPackSize());
 
 			}else if (RcvDataType == 'R'){ //Registration Points from Robot
@@ -386,11 +384,9 @@ int main(int argc, char* argv[])
 				//reinterpret the data
 				for( int m = 0; m<pointstoregister; m++){
 					for(int n =0; n<3; n++){
-						memcpy(&RegPoints[m][n],&bufferRecievefrmRobot[2+(m*3+n)*sizeof(double)],sizeof(double));
-						//std::cerr<<bufferRecievefrmRobot[2+m*sizeof(double) + n];
+						memcpy(&RegPoints[m][n],&bufferRecievefrmRobot[3+(m*3+n)*sizeof(double)],sizeof(double));
 					}
 				}
-				//std::cerr<<endl;
 				 // If not correct, print usage
 				std::cerr<< "Point 1: X " << RegPoints[0][0] <<" Y " << RegPoints[0][1] << "Z" <<RegPoints[0][2] << std::endl;
 				std::cerr << "Point 2: X " << RegPoints[1][0] <<" Y " << RegPoints[1][1] << "Z" <<RegPoints[1][2] << std::endl;

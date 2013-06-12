@@ -31,11 +31,11 @@ public class SimRobotApp {
 	 public static void main(String[] args) throws IOException{
 
 		 	//Initializing some variables and stuff in the real Programm the robot and controller will set here
+		 // So this is hear so the Sim Programm got a similiar appearance to the programm running on the robot later on
 		 	initialize();
 			runRealtimeMotion();
 
 		}
-
 
 	 	//Member variables for Virtual Fixtures
 		private static Vector plane_ap;
@@ -158,17 +158,20 @@ public class SimRobotApp {
 		 public static int LBRRegistration(MatrixTransformation curPose, int curIndex, boolean isFirstStep ){
 			
 
-					// We are in CartImp Mode,
-					// Modify the settings:
-					// NOTE: YOU HAVE TO REMAIN POSITIVE SEMI-DEFINITE !!
-					// NOTE: DONT CHANGE TOO FAST THE SETTINGS, ELSE YOU
-					// WILL DESTABILIZE THE CONTROLLER
-					double aTransStiffVal =0;
-					double aRotStiffVal = 0;
-		
+				// We are in CartImp Mode,
+				// Modify the settings:
+				// NOTE: YOU HAVE TO REMAIN POSITIVE SEMI-DEFINITE !!
+				// NOTE: DONT CHANGE TOO FAST THE SETTINGS, ELSE YOU
+				// WILL DESTABILIZE THE CONTROLLER
+				double aTransStiffVal =0;
+				double aRotStiffVal = 0;
+				
+				// check if the Tool has been moved regarding the lastSaved Position
 				Vector DeltaPosition=LastSavedPosition.subtract(curPose.getTranslation());
 				double DeltaNorm = Math.sqrt(Math.pow(DeltaPosition.getX(),2) +Math.pow(DeltaPosition.getY(), 2) + Math.pow(DeltaPosition.getZ(),2));
 				if(DeltaNorm>= 50){
+					
+					//Saving N Points into an Array
 					if(posemeasured<N){
 						sumPosition = sumPosition.add(curPose.getTranslation());
 						double xSquare = curPose.getTranslation().getX()*curPose.getTranslation().getX();
@@ -178,7 +181,7 @@ public class SimRobotApp {
 						OldestValues[posemeasured] = curPose.getTranslation();
 						posemeasured++;
 						
-					}else{
+					}else{//Calculationg the floating average
 						sumPosition = sumPosition.subtract(OldestValues[curIndex]);
 						double xSquareOld = OldestValues[curIndex].getX()*OldestValues[curIndex].getX();
 						double ySquareOld = OldestValues[curIndex].getY()*OldestValues[curIndex].getY();
@@ -195,19 +198,22 @@ public class SimRobotApp {
 						if (curIndex==100){
 							curIndex=0;
 						}
+						
+						//Check if the StandardDeviation is less then Threshhold => no movement save Mean Value as Registration Point
 						StandardDeviation = SumSquares.subtract(Vector.of(sumPosition.getX()*sumPosition.getX(), sumPosition.getY()*sumPosition.getY(), sumPosition.getZ()*sumPosition.getZ())).multiply( N/ (N * (N - 1)));
 						if (StandardDeviation.getX() <= Threshhold_Pose && StandardDeviation.getY() <= Threshhold_Pose && StandardDeviation.getZ() <= Threshhold_Pose){
 							
 							RegPoints[registeredpoints] = Vector.of( (1/((double)N))*sumPosition.getX(), (1/((double)N))*sumPosition.getY(), (1/((double)N))*sumPosition.getZ());
 							LastSavedPosition = RegPoints[registeredpoints];
-							posemeasured = 0;
 							
+							//Reseting Variables for the data array
+							posemeasured = 0;
 							sumPosition = Vector.of( 0, 0, 0);
 							SumSquares = Vector.of(0,  0, 0);
 							curIndex = 0;
 							StandardDeviation = Vector.of(100, 100, 100);
 							
-							
+							//Increase registered points
 							registeredpoints++;
 							System.out.println(registeredpoints + ". point succesfully saved!!");
 						}
@@ -215,11 +221,14 @@ public class SimRobotApp {
 					
 					
 				}
+				//For Debugging just send some data and that registeredpoints to pointstoregister so next state could be change to the next State
 				RegPoints[0] = Vector.of( 1, 2, 1);
 				RegPoints[1] = Vector.of( 2, 3, 2);
 				RegPoints[2] = Vector.of( 3, 4, 3);
 				RegPoints[3] = Vector.of( 4, 5, 4);
 				registeredpoints=pointstoregister;
+				
+				//Return the current Position
 				return curIndex;
 		 }
 		 
@@ -232,22 +241,23 @@ public class SimRobotApp {
 			 byte[] tmp = new byte[Double.SIZE/8];
 			 boolean check;
 			 out_array[0] = 'R';
-			 out_array[1] = (byte) State;
+			 out_array[1] = (byte) mCurrentState;
+			 out_array[2] = (byte) mError;
 			
 			 
 			 for(int l= 0; l<pointstoregister;l++){
 				 for(int  f =0; f<3; f++){
+					 //Wrapping the Double data to an byte array
 					 ByteBuffer.wrap(tmp).putDouble(RegPoints[l].get(f));
 					 for(int m =0; m<(Double.SIZE/8); m++){
 						 //Switch the byte order
-						 int test = 2 + (Double.SIZE/8)*f+(Double.SIZE/8)*3*l +7- m;
-						 out_array[2 + (Double.SIZE/8)*f+(Double.SIZE/8)*3*l +7- m] = tmp[m];
+						 out_array[3 + (Double.SIZE/8)*f+(Double.SIZE/8)*3*l +7- m] = tmp[m];
 					 }
 
 				 }
 		
 			 }
-			 //Senden der Daten + End
+			 //Sending the data to Slicer/Proxy
 		        try {
 					out.write(out_array);
 					check = true;
@@ -260,12 +270,6 @@ public class SimRobotApp {
 			 return check;
 		 }
 		 
-		 /**
-		     * In this function the data from the State control is recieved and checked if the Transformation is send
-		     */
-		 public static void RecieveTCTBase(){
-		 
-		 }
 		 /**
 		     * Gravitation Compensation mode
 		     */
@@ -360,36 +364,36 @@ public class SimRobotApp {
 			 
 			 
 		 }
+		
 		 
-		 public static void NavGravCompVF(){
-			 
-		 }
-		 
+		 //Reading Current state
 		public static int GetCurrentState(){
 			 byte[] buffer= new byte [128];
-			 DoubleBuffer VFbodyTmp;
-			// Lesen der Rückmeldung
+
+			// Reading data from Socket
 	        try {
 				in.read(buffer, 0, 128);
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-	        //Just for Simulation!!!
-	        char temp = (char) buffer[1];
-	        double sizetest;
+	        
 	        if(buffer[1] == 5)//State is Virtual Fixtures then the VF Definition is send as well
 	        {
 	        	mVFtype =(int)buffer[2];
 	        	double tmpDouble;
 	        	double x_ap=0, y_ap=0, z_ap=0, x_n=0, y_n=0, z_n=0;
 	        	byte [] tmpArray = new byte [8];
+	        	
 	        	for (int m=0; m<6+mVFtype; m++){
+	        		//the order of Bytes needs to be switched so start with 7-n
 	        		for(int n=0; n<8; n++){
 	        			tmpArray[7-n]= buffer[3 + m*8+n];
 	        		}
+	        		//Wrap to a double Buffer
 	        		tmpDouble = ByteBuffer.wrap(tmpArray).getDouble();
 	        		
+	        		//And store into Temporary varaibles
 					if(m==0) x_ap =tmpDouble;
 	        		if(m==1)y_ap =tmpDouble;
 	        		if(m==2)z_ap =tmpDouble;
@@ -400,13 +404,23 @@ public class SimRobotApp {
 	        		if(m==5)z_n = tmpDouble;
 	        		
 	        		if(m==6)cone_phi=tmpDouble;
-	        	}	
+	        	}
+	        	//Finally Creating Vectors
 	        	if(mVFtype ==0){
+	        		
 	        			plane_ap= Vector.of(x_ap, y_ap, z_ap);
 	        			plane_n= Vector.of(x_n, y_n, z_n);
+	        			//if its not normalize the do it
+	        			if(Math.sqrt(plane_n.dotProduct(plane_n))!=1){
+	        				plane_n= plane_n.normalize();
+	        			}
 	        	}else{
 	        			cone_ap= Vector.of(x_ap, y_ap, z_ap);
 	        			cone_n= Vector.of(x_n, y_n, z_n);
+	        			//if its not normalize the do it
+	        			if(Math.sqrt(plane_n.dotProduct(plane_n))!=1){
+	        				plane_n= plane_n.normalize();
+	        			}
 	        			
 	        	}
 	        }else if(buffer[1] == 3)//State is WaitforTCtBase
@@ -420,30 +434,35 @@ public class SimRobotApp {
 	        		tmpMatrix[m] = ByteBuffer.wrap(tmpArray).getDouble();		
 	        	}
 	        	T_CT_Base= MatrixTransformation.of(Vector.of(tmpMatrix[3],tmpMatrix[7], tmpMatrix[11]), Matrix.ofRowFirst(tmpMatrix[0], tmpMatrix[1], tmpMatrix[2], tmpMatrix[4], tmpMatrix[5], tmpMatrix[6], tmpMatrix[8], tmpMatrix[9], tmpMatrix[10]));
-	        }else if(buffer[1] == 1){
-	        	
+	        	//Check if the determinant of the Rotation Matrix is 1 and that the flag
+	        	if(T_CT_Base.getRotationMatrix().determinant()==1)
+	        		RecievedT_CT_Base=true;
+	        }else if(buffer[1] == 1){//State is Registration
+	        	//Set number of points for Registration
 	        	pointstoregister = buffer[2];
 	        }
 			return buffer[1];
 		}
 		
+		
+		//Sending the current state to Proxy/Slicer
 		public static boolean SendCurrentState(){
 			 byte[] out_array= new byte [128];
 			 boolean check =false;
 			 out_array[0] = 'S';
 			 out_array[1] =(byte) mCurrentState;
-			// Lesen der Rückmeldung
-			 if(mCurrentState == 1){
-				 if(RegistrationFinished)out_array[2] = 1;
-				 else out_array[2]=0;
-				 out_array [3] = (byte) mError;
-			 }if(mCurrentState == 3) {
+			 out_array [2] = (byte) mError;
+			 
+			 //for some of the states adding some data
+			 if(mCurrentState == 1){//Current State Registration=> send flag RegistrationFinished 
+				 if(RegistrationFinished)out_array[3] = 1;
+				 else out_array[3]=0;
+				 
+			 }if(mCurrentState == 3) {//State is Wait for T_CT_Base=> send flag ReceivedT_CT_Base
 				 if(RecievedT_CT_Base)out_array[2] = 1;
-				 else out_array[2]=0;
-				 out_array [3] = (byte) mError;
+				 else out_array[3]=0;
 			 }
-			
-			 ByteBuffer  buffer = ByteBuffer.wrap(out_array);
+			//Sending bytearray via socket
 	       try {
 				out.write(out_array);
 				check = true;
@@ -456,14 +475,17 @@ public class SimRobotApp {
 			return check;
 		}	
 		
-		
+		//Sending the Transformation to the Slicer side/IGT Proxy
 		public static boolean SendTransform(MatrixTransformation matrix){
 			 byte [] out_array= new byte[128];
 			 boolean check =false;
 			 byte[] tmp = new byte[(Double.SIZE/8)];
 			 out_array[0] =  'T';
 			 out_array[1] =(byte) mCurrentState;
+			 out_array[2] = (byte) mError;
 			 int k=0;
+			 
+			 //Writing the Transformation into byte array 
 			 for(int l= 0; l<3;l++){
 				 for(int f =0;f<4; f++){
 					 if(f!=3){
@@ -472,15 +494,13 @@ public class SimRobotApp {
 						 ByteBuffer.wrap(tmp).putDouble(matrix.getTranslation().get(l));
 					 }
 					 for(int m =0; m<(Double.SIZE/8); m++){
-						 out_array[2 + (Double.SIZE/8)*f+(Double.SIZE/8)*4*l +7- m] = tmp[m];
+						 out_array[3 + (Double.SIZE/8)*f+(Double.SIZE/8)*4*l +7- m] = tmp[m];
 					 }
 
 					 
 				 }
 			 }
-			// Lesen der Rückmeldung
-			 
-			 ByteBuffer  buffer = ByteBuffer.wrap(out_array);
+		//Sending byte array
 	      try {
 	    	  out.write(out_array);
 				check = true;
@@ -493,6 +513,8 @@ public class SimRobotApp {
 			return check;
 		}
 		
+		
+		//Generates just some "Random" Positions to SImulate the Data send by robot
 		public static MatrixTransformation GetRandomPosition(){
 			
 			  double[] position= new double[3];
@@ -520,6 +542,7 @@ public class SimRobotApp {
 			
 			}
 
+		//the RealTime Motion loop including the State machine and the Socket Communication
 	    public static void runRealtimeMotion()
 	    {
 
@@ -599,71 +622,85 @@ public class SimRobotApp {
 			OneTimeStep aStep = timing.newTimeStep();
 			// ///////////////////////////////////////////////////////
 			//
-			mCurrentState = GetCurrentState();
+			if(ProxySocket.isConnected())mCurrentState = GetCurrentState();
+			else mCurrentState =0;//In case there is no Connection to Proxy thet Sate to Idle
 			curMsrCartPose = GetRandomPosition();
 			double curTime = System.nanoTime() - startTimeStamp;
 			
 			switch (mCurrentState ) {
 				case 0: //State IDLE
-					System.out.println("IDLE");
+					
 					if(mOldState != 0){
+						System.out.println("IDLE");
 						RegistrationFinished = false;
 						DataSend = false;
 						RecievedT_CT_Base= false;
 						mOldState = 0;
 						j=0;
 					}
-					SendCurrentState();
+					mError = 0;
+					if(ProxySocket.isConnected())SendCurrentState();
 					break;
 
 				case 1: //State Registration
-					if (mOldState != mCurrentState) {
-						mfirstStep = true;
-						LastSavedPosition= curMsrCartPose.getTranslation();
-						System.out.println("Registration");
-					}else{ mfirstStep = false;}
-					if(RegistrationFinished == false){
-							j = LBRRegistration(MatrixTransformation.of(curMsrCartPose.getTranslation(), curMsrCartPose.getRotation()), j, mfirstStep);
+					if(mOldState == 0) {
+						if (mOldState != mCurrentState) {
+							mfirstStep = true;
+							LastSavedPosition= curMsrCartPose.getTranslation();
+							System.out.println("Registration");
+						}else{ mfirstStep = false;}
+						if(RegistrationFinished == false){
+								j = LBRRegistration(MatrixTransformation.of(curMsrCartPose.getTranslation(), curMsrCartPose.getRotation()), j, mfirstStep);
+						}
+						mOldState = mCurrentState;
+						if ( registeredpoints == pointstoregister){
+							
+							if(RegistrationFinished == false){
+								System.out.println("Registration finished");
+								System.out.println("Points 1: " + RegPoints[0].getX() + " " + RegPoints[0].getY() + " " + RegPoints[0].getZ()  );
+								System.out.println("Points 2: " + RegPoints[1].getX() + " " + RegPoints[1].getY() + " " + RegPoints[1].getZ()  );
+								System.out.println("Points 3: " + RegPoints[2].getX() + " " + RegPoints[2].getY() + " " + RegPoints[2].getZ()  );
+								System.out.println("Points 4: " + RegPoints[3].getX() + " " + RegPoints[3].getY() + " " + RegPoints[3].getZ()  );
+							}
+							RegistrationFinished = true;
+							mError =0;
+						}
+					}else{
+						
+						//Set State to IDLE
+						mCurrentState = 0;
+						mError = 1;
 					}
-				mOldState = mCurrentState;
-				
-				
-				if ( registeredpoints == pointstoregister){
-					
-					if(RegistrationFinished == false){
-						System.out.println("Registration finished");
-						System.out.println("Points 1: " + RegPoints[0].getX() + " " + RegPoints[0].getY() + " " + RegPoints[0].getZ()  );
-						System.out.println("Points 2: " + RegPoints[1].getX() + " " + RegPoints[1].getY() + " " + RegPoints[1].getZ()  );
-						System.out.println("Points 3: " + RegPoints[2].getX() + " " + RegPoints[2].getY() + " " + RegPoints[2].getZ()  );
-						System.out.println("Points 4: " + RegPoints[3].getX() + " " + RegPoints[3].getY() + " " + RegPoints[3].getZ()  );
-					}
-					RegistrationFinished = true;
-				}
-				SendCurrentState();
+
+					if(ProxySocket.isConnected())SendCurrentState();
 				
 				break;
 				
 				case 2: //State SendData
 				if((mOldState == 1|| mOldState==2) && RegistrationFinished==true){
-					System.out.println("Waiting for Data Request");
+					System.out.println("Sending Data");
+					mError = 0;
 					DataSend =  SendRegistrationData(mCurrentState, RegPoints,registeredpoints );
 					mOldState = mCurrentState;
 				}else{
 					mCurrentState=mOldState;
-					SendCurrentState();
 					mError = 1;
+					if(ProxySocket.isConnected())SendCurrentState();
+
 				}
 				break;
 				
 				case 3://State Wait for T_CT_robbase
 					if((mOldState == 2|| mOldState == 3) && DataSend==true){
-						
-						if(mOldState ==2 )System.out.println("Wait for Transformation to Image Space");
-						RecieveTCTBase();
-						RecievedT_CT_Base = true;
+						if(mOldState!=mCurrentState){
+							System.out.println("Wait for Transformation to Image Space");
+						}
 						mOldState = mCurrentState;
+						mError = 0;
+					}else{
+						mError = 1;
 					}
-					SendCurrentState();
+					if(ProxySocket.isConnected())SendCurrentState();
 					break;
 		
 				case 4://GravComp
@@ -674,11 +711,11 @@ public class SimRobotApp {
 						else mfirstStep = false;
 						mOldState = mCurrentState;
 						GravComp(mfirstStep );	
-						SendCurrentState();
+						mError = 0;
+						if(ProxySocket.isConnected())SendCurrentState();
 					break;
 		
 				case 5://Virtual Fixtures
-					RecievedT_CT_Base =true;
 					if(RecievedT_CT_Base == true){
 						mOldState = mCurrentState;
 						VirtualFixtures(MatrixTransformation.of(curMsrCartPose.getTranslation(), curMsrCartPose.getRotation()));
@@ -693,11 +730,12 @@ public class SimRobotApp {
 							System.out.println("Virtual Fixtures");;
 						}
 						else mfirstStep = false;
-						SendCurrentState();
+						mError = 0;
 						
+					}else{
+						mError = 1;
 					}
-					
-			
+					if(ProxySocket.isConnected())SendCurrentState();
 					break;
 		
 				case 6://NavGravComp
@@ -710,17 +748,40 @@ public class SimRobotApp {
 						mOldState = mCurrentState;
 						GravComp(mfirstStep );
 						System.out.println("NavGravComp");
-						SendTransform(MatrixTransformation.of(curMsrCartPose.getTranslation(), curMsrCartPose.getRotation()));
+						mError=0;
+						if(ProxySocket.isConnected())SendTransform(MatrixTransformation.of(curMsrCartPose.getTranslation(), curMsrCartPose.getRotation()));
+					}else{
+						mError = 1;
+						if(ProxySocket.isConnected())SendCurrentState();
 					}
 				case 7://NavGravCompVF
 					if(RecievedT_CT_Base == true){
 						mOldState = mCurrentState;
-						NavGravCompVF();
-						System.out.println("NavGravComp");
-						SendTransform(MatrixTransformation.of(curMsrCartPose.getTranslation(), curMsrCartPose.getRotation()));
+						VirtualFixtures(MatrixTransformation.of(curMsrCartPose.getTranslation(), curMsrCartPose.getRotation()));
+						if (i % 100 == 0){ 
+							System.out.println( "Distance"
+								    + mdistance);
+							    System.out.println(" Stiffness"
+								    +  mStiffVal);
+						}
+						if (mOldState != mCurrentState) {
+							mfirstStep = true;
+							System.out.println("Virtual Fixtures");;
+						}
+						else mfirstStep = false;
+						mError = 0;
+						if(ProxySocket.isConnected())SendTransform(MatrixTransformation.of(curMsrCartPose.getTranslation(), curMsrCartPose.getRotation()));
+						
+					}else{
+						mError = 1;
+						if(ProxySocket.isConnected())SendCurrentState();
 					}
+					break;
 			default:
 				System.out.println("Unknown State Request");
+				mCurrentState = 0;
+				mError = 1;
+				if(ProxySocket.isConnected())SendCurrentState();
 				break;
 			}
 			// Overall timing end
