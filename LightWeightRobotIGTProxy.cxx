@@ -31,14 +31,10 @@
 #endif //OpenIGTLink_PROTOCOL_VERSION >= 2
 
 int ReceiveTransform(igtl::Socket * socket, igtl::MessageHeader * header);
-int ReceivePosition(igtl::Socket * socket, igtl::MessageHeader * header);
-int ReceiveImage(igtl::Socket * socket, igtl::MessageHeader * header);
-int ReceiveStatus(igtl::Socket * socket, igtl::MessageHeader * header);
 
 #if OpenIGTLink_PROTOCOL_VERSION >= 2
 int ReceivePoint(igtl::Socket * socket, igtl::MessageHeader * header);
 int ReceiveString(igtl::Socket * socket, igtl::MessageHeader * header);
-int ReceiveBind(igtl::Socket * socket, igtl::MessageHeader * header);
 #endif //OpenIGTLink_PROTOCOL_VERSION >= 2
 
 double T_CT_Base[12];
@@ -88,7 +84,7 @@ int ReadInt(int nDefault)
 
 int main(int argc, char* argv[])
 {
-
+	
  //------------------------------------------------------------
   // Parse Arguments
 
@@ -252,18 +248,6 @@ int main(int argc, char* argv[])
           {
           ReceiveTransform(SlicerSocket, headerMsg);
           }
-        else if (strcmp(headerMsg->GetDeviceType(), "POSITION") == 0)
-          {
-          ReceivePosition(SlicerSocket, headerMsg);
-          }
-        else if (strcmp(headerMsg->GetDeviceType(), "IMAGE") == 0)
-          {
-          ReceiveImage(SlicerSocket, headerMsg);
-          }
-        else if (strcmp(headerMsg->GetDeviceType(), "STATUS") == 0)
-          {
-          ReceiveStatus(SlicerSocket, headerMsg);
-          }
 	#if OpenIGTLink_PROTOCOL_VERSION >= 2
         else if (strcmp(headerMsg->GetDeviceType(), "POINT") == 0)
           {
@@ -273,9 +257,9 @@ int main(int argc, char* argv[])
           {
           ReceiveString(SlicerSocket, headerMsg);
           }
-        else if (strcmp(headerMsg->GetDeviceType(), "BIND") == 0)
+        else
           {
-          ReceiveBind(SlicerSocket, headerMsg);
+			  std::cerr << "Unknown Datatype received from Slicer!"<<std::endl;
           }
 	#endif //OpenIGTLink_PROTOCOL_VERSION >= 2
 
@@ -414,8 +398,10 @@ int main(int argc, char* argv[])
 			int r =RobotSocket->Receive(bufferRecievefrmRobot, 128);// RcvData_size);
 
 			RcvDataType = bufferRecievefrmRobot[0];
-			std::cerr <<"Datatype Recieved"<< RcvDataType<< std::endl;
+			std::cerr <<"Datatype Recieved: "<< RcvDataType<< std::endl;
+			
 			mRcvState = bufferRecievefrmRobot[1];
+			std::cerr <<"RecievedState is: "<< mRcvState<< std::endl;
 			
 			if(bufferRecievefrmRobot[2]!=0){
 					//Some Debugging
@@ -560,6 +546,7 @@ int main(int argc, char* argv[])
 				  if(SlicerSocket.IsNotNull())SlicerSocket->Send(pointMsg->GetPackPointer(), pointMsg->GetPackSize());
 
 			}else if(RcvDataType == 'S'){
+
 				std::string tmpStringMsg;
 				switch(mState){
 					case 0://IDLE
@@ -635,7 +622,7 @@ int ReceiveTransform(igtl::Socket * socket, igtl::MessageHeader * header)
   
   // Receive transform data from the socket
   socket->Receive(transMsg->GetPackBodyPointer(), transMsg->GetPackBodySize());
-  
+
   // Deserialize the transform data
   // If you want to skip CRC check, call Unpack() without argument.
   int c = transMsg->Unpack(1);
@@ -645,7 +632,8 @@ int ReceiveTransform(igtl::Socket * socket, igtl::MessageHeader * header)
     igtl::Matrix4x4 matrix;
     transMsg->GetMatrix(matrix);
     igtl::PrintMatrix(matrix);
-	if(mState == 3){
+	if(mState == 2){
+		  mState=3;
 		//Saving the Transform into T_CT_Case
 		for( int g=0; g<3; g++){
 			for(int h =0; h<4; h++){
@@ -653,130 +641,10 @@ int ReceiveTransform(igtl::Socket * socket, igtl::MessageHeader * header)
 			}
 		}
 	}else{
-		std::cerr << "Change robot state to WaitforTCTBase first" << std::endl;
+		std::cerr << "First receive Data from Robot" << std::endl;
 	}
 
     return 1;
-    }
-
-  return 0;
-
-}
-
-
-int ReceivePosition(igtl::Socket * socket, igtl::MessageHeader * header)
-{
-  std::cerr << "Receiving POSITION data type." << std::endl;
-  
-  // Create a message buffer to receive transform data
-  igtl::PositionMessage::Pointer positionMsg;
-  positionMsg = igtl::PositionMessage::New();
-  positionMsg->SetMessageHeader(header);
-  positionMsg->AllocatePack();
-  
-  // Receive position position data from the socket
-  socket->Receive(positionMsg->GetPackBodyPointer(), positionMsg->GetPackBodySize());
-  
-  // Deserialize the transform data
-  // If you want to skip CRC check, call Unpack() without argument.
-  int c = positionMsg->Unpack(1);
-  
-  if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
-    {
-    // Retrive the transform data
-    float position[3];
-    float quaternion[4];
-
-    positionMsg->GetPosition(position);
-    positionMsg->GetQuaternion(quaternion);
-
-    std::cerr << "position   = (" << position[0] << ", " << position[1] << ", " << position[2] << ")" << std::endl;
-    std::cerr << "quaternion = (" << quaternion[0] << ", " << quaternion[1] << ", "
-              << quaternion[2] << ", " << quaternion[3] << ")" << std::endl << std::endl;
-
-    return 1;
-    }
-
-  return 0;
-
-}
-
-
-int ReceiveImage(igtl::Socket * socket, igtl::MessageHeader * header)
-{
-  std::cerr << "Receiving IMAGE data type." << std::endl;
-
-  // Create a message buffer to receive transform data
-  igtl::ImageMessage::Pointer imgMsg;
-  imgMsg = igtl::ImageMessage::New();
-  imgMsg->SetMessageHeader(header);
-  imgMsg->AllocatePack();
-  
-  // Receive transform data from the socket
-  socket->Receive(imgMsg->GetPackBodyPointer(), imgMsg->GetPackBodySize());
-  
-  // Deserialize the transform data
-  // If you want to skip CRC check, call Unpack() without argument.
-  int c = imgMsg->Unpack(1);
-  
-  if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
-    {
-    // Retrive the image data
-    int   size[3];          // image dimension
-    float spacing[3];       // spacing (mm/pixel)
-    int   svsize[3];        // sub-volume size
-    int   svoffset[3];      // sub-volume offset
-    int   scalarType;       // scalar type
-
-    scalarType = imgMsg->GetScalarType();
-    imgMsg->GetDimensions(size);
-    imgMsg->GetSpacing(spacing);
-    imgMsg->GetSubVolume(svsize, svoffset);
-
-    std::cerr << "Device Name           : " << imgMsg->GetDeviceName() << std::endl;
-    std::cerr << "Scalar Type           : " << scalarType << std::endl;
-    std::cerr << "Dimensions            : ("
-              << size[0] << ", " << size[1] << ", " << size[2] << ")" << std::endl;
-    std::cerr << "Spacing               : ("
-              << spacing[0] << ", " << spacing[1] << ", " << spacing[2] << ")" << std::endl;
-    std::cerr << "Sub-Volume dimensions : ("
-              << svsize[0] << ", " << svsize[1] << ", " << svsize[2] << ")" << std::endl;
-    std::cerr << "Sub-Volume offset     : ("
-              << svoffset[0] << ", " << svoffset[1] << ", " << svoffset[2] << ")" << std::endl;
-    return 1;
-    }
-
-  return 0;
-
-}
-
-
-int ReceiveStatus(igtl::Socket * socket, igtl::MessageHeader * header)
-{
-
-  std::cerr << "Receiving STATUS data type." << std::endl;
-
-  // Create a message buffer to receive transform data
-  igtl::StatusMessage::Pointer statusMsg;
-  statusMsg = igtl::StatusMessage::New();
-  statusMsg->SetMessageHeader(header);
-  statusMsg->AllocatePack();
-  
-  // Receive transform data from the socket
-  socket->Receive(statusMsg->GetPackBodyPointer(), statusMsg->GetPackBodySize());
-  
-  // Deserialize the transform data
-  // If you want to skip CRC check, call Unpack() without argument.
-  int c = statusMsg->Unpack(1);
-  
-  if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
-    {
-    std::cerr << "========== STATUS ==========" << std::endl;
-    std::cerr << " Code      : " << statusMsg->GetCode() << std::endl;
-    std::cerr << " SubCode   : " << statusMsg->GetSubCode() << std::endl;
-    std::cerr << " Error Name: " << statusMsg->GetErrorName() << std::endl;
-    std::cerr << " Status    : " << statusMsg->GetStatusString() << std::endl;
-    std::cerr << "============================" << std::endl;
     }
 
   return 0;
@@ -859,42 +727,46 @@ int ReceiveString(igtl::Socket * socket, igtl::MessageHeader * header)
 				  << "String: " << stringMsg->GetString() << std::endl;
 		RecvString = stringMsg->GetString();
 		TmpString = RecvString;
-		unsigned int pos = RecvString.find(";")-1;
+		std::cerr<<"Received String: " <<RecvString<<std::endl;
+		unsigned int pos = RecvString.find(";");
 		Command = TmpString.substr(0, pos);
-		while((pos+1)<=TmpString.length()){
-			TmpString = TmpString.substr(pos);
-			pos = TmpString.find(";")-1;
+		while((pos+1)<TmpString.length()){
+			TmpString = TmpString.substr(pos+1);
+			std::cerr<<"TmpString: "<<TmpString <<std::endl;
+			pos = TmpString.find(";");
 			tmpParam[numberofparam] = TmpString.substr(0, pos);
+			std::cerr<<"Parameter: "<<tmpParam[numberofparam]<<std::endl;
 			numberofparam++;
 		}
 
-		if(strcmp(Command.c_str(), "IDLE")==1){
+		if(strcmp(Command.c_str(), "IDLE")==0){
+			std::cerr<< "State: "<<mState<<std::endl;
 			mState = 0;
 			if(numberofparam!=0){
 				std::cerr << "To many Parameters recieved - the sent parameters are ignored" << std::endl;
 			}
 
-		}else if(strcmp(Command.c_str(), "Registration")==1){
+		}else if(strcmp(Command.c_str(), "Registration")==0){
 			mState = 1;
 			pointstoregister=atoi(tmpParam[0].c_str());
 			if(numberofparam>1){
 				std::cerr << "To many Parameters recieved - the sent parameters are ignored" << std::endl;
 			}
-		}else if(strcmp(Command.c_str(), "SendData")==1){
+		}else if(strcmp(Command.c_str(), "SendData")==0){
 			mState= 2;
 			if(numberofparam!=0){
 				std::cerr << "To many Parameters recieved - the sent parameters are ignored" << std::endl;
 			}
 
-		}else if(strcmp(Command.c_str(), "WaitforTCTBase")==1){
+		}else if(strcmp(Command.c_str(), "WaitforTCTBase")==0){
 			mState = 3;
 			if(numberofparam!=0){
 				std::cerr << "To many Parameters recieved - the sent parameters are ignored" << std::endl;
 			}
 
-		}else if(strcmp(Command.c_str(), "GravComp")==1){
+		}else if(strcmp(Command.c_str(), "GravComp")==0){
 			mState= 4;
-		}else if(strcmp(Command.c_str(), "VirtualFixtures")==1){
+		}else if(strcmp(Command.c_str(), "VirtualFixtures")==0){
 			mState= 5;
 			if(numberofparam>=6){
 				ap[0]=atof(tmpParam[1].c_str());
@@ -905,12 +777,12 @@ int ReceiveString(igtl::Socket * socket, igtl::MessageHeader * header)
 				n[1]=atof(tmpParam[5].c_str());
 				n[2]=atof(tmpParam[6].c_str());
 
-				if(strcmp(tmpParam[0].c_str(), "cone")==1){
+				if(strcmp(tmpParam[0].c_str(), "cone")==0){
 					phi=atof(tmpParam[7].c_str());
 					if(numberofparam>8){
 						std::cerr << "To many Parameters recieved - the sent parameters are ignored" << std::endl;
 					}
-				}else if (strcmp(tmpParam[0].c_str(), "plane")==1){
+				}else if (strcmp(tmpParam[0].c_str(), "plane")==0){
 					if(numberofparam>7){
 						std::cerr << "To many Parameters recieved - the sent parameters are ignored" << std::endl;
 					}
@@ -920,12 +792,12 @@ int ReceiveString(igtl::Socket * socket, igtl::MessageHeader * header)
 			}else{
 				std::cerr << "Not enough Parameters" << std::endl;
 			}
-		}else if(strcmp(Command.c_str(), "NavGravComp")==1){
+		}else if(strcmp(Command.c_str(), "NavGravComp")==0){
 			mState= 6;
 			if(numberofparam!=0){
 				std::cerr << "To many Parameters recieved - the sent parameters are ignored" << std::endl;
 			}
-		}else if(strcmp(Command.c_str(), "NavGravCompVF")==1){
+		}else if(strcmp(Command.c_str(), "NavGravCompVF")==0){
 			mState= 7;
 			if(numberofparam>=6){
 				ap[0]=atof(tmpParam[1].c_str());
@@ -936,12 +808,12 @@ int ReceiveString(igtl::Socket * socket, igtl::MessageHeader * header)
 				n[1]=atof(tmpParam[5].c_str());
 				n[2]=atof(tmpParam[6].c_str());
 
-				if(strcmp(tmpParam[0].c_str(), "cone")==1){
+				if(strcmp(tmpParam[0].c_str(), "cone")==0){
 					phi=atof(tmpParam[7].c_str());
 					if(numberofparam>8){
 						std::cerr << "To many Parameters recieved - the sent parameters are ignored" << std::endl;
 					}
-				}else if (strcmp(tmpParam[0].c_str(), "plane")==1){
+				}else if (strcmp(tmpParam[0].c_str(), "plane")==0){
 					if(numberofparam>7){
 						std::cerr << "To many Parameters recieved - the sent parameters are ignored" << std::endl;
 					}
@@ -954,62 +826,10 @@ int ReceiveString(igtl::Socket * socket, igtl::MessageHeader * header)
 		}else{
 			std::cerr << "Unknown Command String Recieved from Slicer" << std::endl;
 		}
+		std::cerr<< "State: "<<mState<<std::endl;
   }
   return 1;
 }
-int ReceiveBind(igtl::Socket * socket, igtl::MessageHeader * header)
-{
-
-  std::cerr << "Receiving BIND data type." << std::endl;
-
-  // Create a message buffer to receive transform data
-  igtl::BindMessage::Pointer bindMsg;
-  bindMsg = igtl::BindMessage::New();
-  bindMsg->SetMessageHeader(header);
-  bindMsg->AllocatePack();
-
-  // Receive transform data from the socket
-  socket->Receive(bindMsg->GetPackBodyPointer(), bindMsg->GetPackBodySize());
-
-  // Deserialize the transform data
-  // If you want to skip CRC check, call Unpack() without argument.
-  int c = bindMsg->Unpack(1);
-
-  if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
-    {
-    int n = bindMsg->GetNumberOfChildMessages();
-
-    for (int i = 0; i < n; i ++)
-      {
-      if (strcmp(bindMsg->GetChildMessageType(i), "STRING") == 0)
-        {
-        igtl::StringMessage::Pointer stringMsg;
-        stringMsg = igtl::StringMessage::New();
-        bindMsg->GetChildMessage(i, stringMsg);
-        stringMsg->Unpack(0);
-        std::cerr << "Message type: STRING" << std::endl;
-        std::cerr << "Message name: " << stringMsg->GetDeviceName() << std::endl;
-        std::cerr << "Encoding: " << stringMsg->GetEncoding() << "; "
-                  << "String: " << stringMsg->GetString() << std::endl;
-        }
-      else if (strcmp(bindMsg->GetChildMessageType(i), "TRANSFORM") == 0)
-        {
-        igtl::TransformMessage::Pointer transMsg;
-        transMsg = igtl::TransformMessage::New();
-        bindMsg->GetChildMessage(i, transMsg);
-        transMsg->Unpack(0);
-        std::cerr << "Message type: TRANSFORM" << std::endl;
-        std::cerr << "Message name: " << transMsg->GetDeviceName() << std::endl;
-        igtl::Matrix4x4 matrix;
-        transMsg->GetMatrix(matrix);
-        igtl::PrintMatrix(matrix);
-        }
-      }
-    }
-
-  return 1;
-}
-
 #endif //OpenIGTLink_PROTOCOL_VERSION >= 2
 
 

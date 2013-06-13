@@ -12,5 +12,8 @@ include(${OpenIGTLink_USE_FILE})
 ADD_EXECUTABLE(LightWeightRobotIGTProxy  LightWeightRobotIGTProxy.cxx)
 TARGET_LINK_LIBRARIES(LightWeightRobotIGTProxy OpenIGTLink)
 
+ADD_EXECUTABLE(VirtualSlicerRobotCommand  VirtualSlicerRobotCommand.cxx)
+TARGET_LINK_LIBRARIES(VirtualSlicerRobotCommand OpenIGTLink)
+
 
 

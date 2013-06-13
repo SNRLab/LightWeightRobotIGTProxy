@@ -484,14 +484,17 @@ public class SimRobotApp {
 			 out_array[1] =(byte) mCurrentState;
 			 out_array[2] = (byte) mError;
 			 int k=0;
+			 MatrixTransformation CurPoseCOF_CT;
 			 
+			 //Transform it to Imagespace
+			 CurPoseCOF_CT = T_CT_Base.compose(matrix);
 			 //Writing the Transformation into byte array 
 			 for(int l= 0; l<3;l++){
 				 for(int f =0;f<4; f++){
 					 if(f!=3){
-						 ByteBuffer.wrap(tmp).putDouble(matrix.getRotation().getMatrix().get(l, f));
+						 ByteBuffer.wrap(tmp).putDouble( CurPoseCOF_CT.getRotation().getMatrix().get(l, f));
 					 }else if(f==3){
-						 ByteBuffer.wrap(tmp).putDouble(matrix.getTranslation().get(l));
+						 ByteBuffer.wrap(tmp).putDouble( CurPoseCOF_CT.getTranslation().get(l));
 					 }
 					 for(int m =0; m<(Double.SIZE/8); m++){
 						 out_array[3 + (Double.SIZE/8)*f+(Double.SIZE/8)*4*l +7- m] = tmp[m];
