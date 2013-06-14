@@ -319,20 +319,15 @@ int ReceiveString(igtl::Socket * socket, igtl::MessageHeader::Pointer& header)
 
   if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
     {
-		std::cerr << "Encoding: " << stringMsg->GetEncoding() << "; "
-				  << "String: " << stringMsg->GetString() << std::endl;
 		RecvString = stringMsg->GetString();
 		TmpString = RecvString;
 		std::cerr<<"Received String: " <<RecvString<<std::endl;
 		unsigned int pos = RecvString.find(";");
 		Command = TmpString.substr(0, pos);
-		std::cerr<<"Command String: "<<Command<<std::endl;
 		while((pos+1)<TmpString.length()){
 			TmpString = TmpString.substr(pos+1);
-			std::cerr<<"TmpString: "<<TmpString <<std::endl;
 			pos = TmpString.find(";");
 			tmpParam[numberofparam] = TmpString.substr(0, pos);
-			std::cerr<<"Parameter: "<<tmpParam[numberofparam]<<std::endl;
 			numberofparam++;
 		}
 

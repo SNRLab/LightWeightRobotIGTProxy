@@ -41,6 +41,7 @@ double T_CT_Base[12];
 double ap[3], n[3], phi;
 int mState;
 int mRcvState; 
+int mOldState;
 int mVFtype;
 int RcvData_size;
 int SendData_size;
@@ -203,7 +204,7 @@ int main(int argc, char* argv[])
 
   while (1)
     {
-   
+	mOldState=mState;
 	if(SlicerSocket.IsNull()){
 		//Set the Current State - Later this will be recieved from the Slicer Module
 		 printf("\nSelect State Current State is %d ): ",
@@ -239,20 +240,12 @@ int main(int argc, char* argv[])
         headerMsg->GetTimeStamp(ts);
         ts->GetTimeStamp(&sec, &nanosec);
 
-        std::cerr << "Time stamp: "
-                  << sec << "." << std::setw(9) << std::setfill('0') 
-                  << nanosec << std::endl;
-
         // Check data type and receive data body
         if (strcmp(headerMsg->GetDeviceType(), "TRANSFORM") == 0)
           {
           ReceiveTransform(SlicerSocket, headerMsg);
           }
 	#if OpenIGTLink_PROTOCOL_VERSION >= 2
-        else if (strcmp(headerMsg->GetDeviceType(), "POINT") == 0)
-          {
-          ReceivePoint(SlicerSocket, headerMsg);
-          }
         else if (strcmp(headerMsg->GetDeviceType(), "STRING") == 0)
           {
           ReceiveString(SlicerSocket, headerMsg);
@@ -398,15 +391,16 @@ int main(int argc, char* argv[])
 			int r =RobotSocket->Receive(bufferRecievefrmRobot, 128);// RcvData_size);
 
 			RcvDataType = bufferRecievefrmRobot[0];
-			std::cerr <<"Datatype Recieved: "<< RcvDataType<< std::endl;
+			std::cerr <<"Datatype Recieved from Robot: "<< RcvDataType<< std::endl;
 			
 			mRcvState = bufferRecievefrmRobot[1];
-			std::cerr <<"RecievedState is: "<< mRcvState<< std::endl;
+			std::cerr <<"RecievedState from Robot: "<< mRcvState<< std::endl;
 			
-			if(bufferRecievefrmRobot[2]!=0){
+			if(mRcvState!=mState){
 					//Some Debugging
-					std::cerr << "Cannot change State to " << mState << std::endl;
-
+					std::cerr << "Cannot change Robot State to " << mState << std::endl;
+					mState=mOldState;
+					std::cerr << "Reseted Robot State to " << mState << std::endl;
 			}
 			//Datatype is Transform
 			if (RcvDataType == 'T'){
@@ -427,7 +421,7 @@ int main(int argc, char* argv[])
 				matrix[3][3] = 1;
 				transMsg->SetMatrix(matrix);
 				transMsg->Pack();
-				std::cerr<< "T_Current Pose:" <<std::endl;
+				std::cerr<< "T_Current Pose from Robot:" <<std::endl;
 				std::cerr<<matrix[0][0] <<"	" << matrix[0][1] << "	"     <<matrix[0][2] <<"	" <<matrix[0][3] << std::endl;
 				std::cerr <<  matrix[1][0] <<"	" << matrix[1][1] << "	" <<matrix[1][2] <<"	" <<matrix[1][3] << std::endl;
 				std::cerr <<  matrix[2][0] <<"	" << matrix[2][1] << "	" <<matrix[2][2] <<"	" << matrix[2][3] <<std::endl;
@@ -556,7 +550,7 @@ int main(int argc, char* argv[])
 						if(bufferRecievefrmRobot[2] ==0){
 							tmpStringMsg = "Registration;false;";
 						}else if(bufferRecievefrmRobot[2] ==1){
-							tmpStringMsg = "WaitforTCTBase;true;";
+							tmpStringMsg = "Registration;true;";
 						}
 						break;
 					case 2://SendData
@@ -619,7 +613,8 @@ int ReceiveTransform(igtl::Socket * socket, igtl::MessageHeader * header)
   transMsg = igtl::TransformMessage::New();
   transMsg->SetMessageHeader(header);
   transMsg->AllocatePack();
-  
+
+  mState=3;
   // Receive transform data from the socket
   socket->Receive(transMsg->GetPackBodyPointer(), transMsg->GetPackBodySize());
 
@@ -632,17 +627,14 @@ int ReceiveTransform(igtl::Socket * socket, igtl::MessageHeader * header)
     igtl::Matrix4x4 matrix;
     transMsg->GetMatrix(matrix);
     igtl::PrintMatrix(matrix);
-	if(mState == 2){
-		  mState=3;
-		//Saving the Transform into T_CT_Case
+
+	//Saving the Transform into T_CT_Case
 		for( int g=0; g<3; g++){
 			for(int h =0; h<4; h++){
 				T_CT_Base[h + g*4] = matrix[g][h];
 			}
 		}
-	}else{
-		std::cerr << "First receive Data from Robot" << std::endl;
-	}
+	
 
     return 1;
     }
@@ -653,53 +645,6 @@ int ReceiveTransform(igtl::Socket * socket, igtl::MessageHeader * header)
 
 
 #if OpenIGTLink_PROTOCOL_VERSION >= 2
-int ReceivePoint(igtl::Socket * socket, igtl::MessageHeader * header)
-{
-
-  std::cerr << "Receiving POINT data type." << std::endl;
-
-  // Create a message buffer to receive transform data
-  igtl::PointMessage::Pointer pointMsg;
-  pointMsg = igtl::PointMessage::New();
-  pointMsg->SetMessageHeader(header);
-  pointMsg->AllocatePack();
-
-  // Receive transform data from the socket
-  socket->Receive(pointMsg->GetPackBodyPointer(), pointMsg->GetPackBodySize());
-
-  // Deserialize the transform data
-  // If you want to skip CRC check, call Unpack() without argument.
-  int c = pointMsg->Unpack(1);
-
-  if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
-    {
-    int nElements = pointMsg->GetNumberOfPointElement();
-    for (int i = 0; i < nElements; i ++)
-      {
-      igtl::PointElement::Pointer pointElement;
-      pointMsg->GetPointElement(i, pointElement);
-
-      igtlUint8 rgba[4];
-      pointElement->GetRGBA(rgba);
-
-      igtlFloat32 pos[3];
-      pointElement->GetPosition(pos);
-
-      std::cerr << "========== Element #" << i << " ==========" << std::endl;
-      std::cerr << " Name      : " << pointElement->GetName() << std::endl;
-      std::cerr << " GroupName : " << pointElement->GetGroupName() << std::endl;
-      std::cerr << " RGBA      : ( " << (int)rgba[0] << ", " << (int)rgba[1] << ", " << (int)rgba[2] << ", " << (int)rgba[3] << " )" << std::endl;
-      std::cerr << " Position  : ( " << std::fixed << pos[0] << ", " << pos[1] << ", " << pos[2] << " )" << std::endl;
-      std::cerr << " Radius    : " << std::fixed << pointElement->GetRadius() << std::endl;
-      std::cerr << " Owner     : " << pointElement->GetOwner() << std::endl;
-      std::cerr << "================================" << std::endl;
-      }
-    }
-
-  return 1;
-}
-
-
 int ReceiveString(igtl::Socket * socket, igtl::MessageHeader * header)
 {
   std::string RecvString;

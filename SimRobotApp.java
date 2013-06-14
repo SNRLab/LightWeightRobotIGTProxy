@@ -646,9 +646,11 @@ public class SimRobotApp {
 					break;
 
 				case 1: //State Registration
-					if(mOldState == 0) {
+					if(mOldState == 0 || mOldState == 2 ||mOldState==3) {
 						if (mOldState != mCurrentState) {
 							mfirstStep = true;
+							DataSend = false;
+							RecievedT_CT_Base = false;
 							LastSavedPosition= curMsrCartPose.getTranslation();
 							System.out.println("Registration");
 						}else{ mfirstStep = false;}
@@ -702,6 +704,8 @@ public class SimRobotApp {
 						mError = 0;
 					}else{
 						mError = 1;
+						 mCurrentState= mOldState;
+						 RecievedT_CT_Base =false;
 					}
 					if(ProxySocket.isConnected())SendCurrentState();
 					break;
