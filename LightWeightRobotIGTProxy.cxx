@@ -35,6 +35,8 @@ int ReceiveTransform(igtl::Socket * socket, igtl::MessageHeader * header);
 #if OpenIGTLink_PROTOCOL_VERSION >= 2
 int ReceivePoint(igtl::Socket * socket, igtl::MessageHeader * header);
 int ReceiveString(igtl::Socket * socket, igtl::MessageHeader * header);
+int SendRegistrationPoints(igtl::Socket * socket, double Points[6][3], std::string ID);
+int SendString(igtl::Socket * socket, unsigned char buffer[], std::string ID);
 #endif //OpenIGTLink_PROTOCOL_VERSION >= 2
 
 double T_CT_Base[12];
@@ -48,7 +50,10 @@ int SendData_size;
 int pointstoregister=4;
 unsigned char RcvDataType=0;
 bool mError;
+std::string mUID;
 std::string mErrorString;
+bool mReceivedData=false;
+bool RecievedTransform=false;
 
 //This Functions reads a User Input 
 
@@ -111,11 +116,7 @@ int main(int argc, char* argv[])
 	double RegPoints[6][3];
 	int j=0;
 
-	igtl::StringMessage::Pointer stringMsg;
-	stringMsg = igtl::StringMessage::New();
-	stringMsg->SetDeviceName("Robot State");
-
-
+	
 	igtl::TransformMessage::Pointer transMsg;
 	transMsg = igtl::TransformMessage::New();
 	transMsg->SetDeviceName("CurrentPose in Imagespace");
@@ -143,7 +144,7 @@ int main(int argc, char* argv[])
 	}
 	igtl::Socket::Pointer RobotSocket;
 	igtl::Socket::Pointer SlicerSocket;
-
+	
 	 // Create a message buffer to receive header
       igtl::MessageHeader::Pointer headerMsg;
       headerMsg = igtl::MessageHeader::New();
@@ -162,6 +163,7 @@ int main(int argc, char* argv[])
 	}else{
 		std::cerr<<"ERROR: SlicerModule is not connected"<<std::endl;
 	}
+	SlicerSocket->SetReceiveTimeout(20);
 	if(SlicerSocket.IsNull()){
 		//Reading the Virtual Fixture Definition from Terminal
 		//later one this will be send by the 3D Slicer Module
@@ -213,6 +215,9 @@ int main(int argc, char* argv[])
 
 		printf("\n");
 	}else if(SlicerSocket.IsNotNull()){
+		
+
+
 		 // Initialize receive buffer
         headerMsg->InitPack();
 		   //------------------------------------------------------------
@@ -223,38 +228,44 @@ int main(int argc, char* argv[])
         int r =SlicerSocket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize());
         if (r == 0)
           {
-          SlicerSocket->CloseSocket();
+		  mReceivedData=false;
+          //SlicerSocket->CloseSocket();
           }
         if (r != headerMsg->GetPackSize())
           {
+		  mReceivedData=false;
           continue;
-          }
+		}else{
+			mReceivedData=true;
+		}
+		if(mReceivedData){
 
-        // Deserialize the header
-        headerMsg->Unpack();
+			// Deserialize the header
+			headerMsg->Unpack();
 
-        // Get time stamp
-        igtlUint32 sec;
-        igtlUint32 nanosec;
-        
-        headerMsg->GetTimeStamp(ts);
-        ts->GetTimeStamp(&sec, &nanosec);
+			// Get time stamp
+			igtlUint32 sec;
+			igtlUint32 nanosec;
+	        
+			headerMsg->GetTimeStamp(ts);
+			ts->GetTimeStamp(&sec, &nanosec);
 
-        // Check data type and receive data body
-        if (strcmp(headerMsg->GetDeviceType(), "TRANSFORM") == 0)
-          {
-          ReceiveTransform(SlicerSocket, headerMsg);
-          }
-	#if OpenIGTLink_PROTOCOL_VERSION >= 2
-        else if (strcmp(headerMsg->GetDeviceType(), "STRING") == 0)
-          {
-          ReceiveString(SlicerSocket, headerMsg);
-          }
-        else
-          {
-			  std::cerr << "Unknown Datatype received from Slicer!"<<std::endl;
-          }
-	#endif //OpenIGTLink_PROTOCOL_VERSION >= 2
+			// Check data type and receive data body
+			if (strcmp(headerMsg->GetDeviceType(), "TRANSFORM") == 0)
+			  {
+			  ReceiveTransform(SlicerSocket, headerMsg);
+			  }
+		#if OpenIGTLink_PROTOCOL_VERSION >= 2
+			else if (strcmp(headerMsg->GetDeviceType(), "STRING") == 0)
+			  {
+			  ReceiveString(SlicerSocket, headerMsg);
+			  }
+			else
+			  {
+				  std::cerr << "Unknown Datatype received from Slicer!"<<std::endl;
+			  }
+		#endif //OpenIGTLink_PROTOCOL_VERSION >= 2
+		}
 
 	}
 	     
@@ -289,21 +300,28 @@ int main(int argc, char* argv[])
 				case 3: //Send T_CT_Base to robot
 					bufferSendtoRobot[0] = 'S';
 					bufferSendtoRobot[1] = mState;
+					if(RecievedTransform==true){
+					//Dataset is includingTransform
+					bufferSendtoRobot[2]= 1;
 					if(SlicerSocket.IsNull()){
-						//Reading the Transform from User
-						for (int f =0; f<12; f++){
-							printf("\n");
-							printf("Transformation T_CT_Base[ %d]: ", f);
-							T_CT_Base[f] = (ReadDouble('0.0') );
-							printf("\n");
+							//Reading the Transform from User
+							for (int f =0; f<12; f++){
+								printf("\n");
+								printf("Transformation T_CT_Base[ %d]: ", f);
+								T_CT_Base[f] = (ReadDouble('0.0') );
+								printf("\n");
+							}
 						}
+						//Storing double data into unsigned char buffer for Socket Communication
+						for(int q=0; q<12; q++){
+							memcpy(&tmpArr,&T_CT_Base[q],sizeof(double));
+							for (j=0; j<sizeof(double); j++) bufferSendtoRobot[3+q*sizeof(double)+j] = tmpArr[j];
+						}
+						SendData_size = 3+12*sizeof(double);
+					}else{
+						//Dataset without Transform
+						bufferSendtoRobot[2]= 0;
 					}
-					//Storing double data into unsigned char buffer for Socket Communication
-					for(int q=0; q<12; q++){
-						memcpy(&tmpArr,&T_CT_Base[q],sizeof(double));
-						for (j=0; j<sizeof(double); j++) bufferSendtoRobot[2+q*sizeof(double)+j] = tmpArr[j];
-					}
-					SendData_size = 2+12*sizeof(double);
 					RcvData_size = 4;
 
 					break;
@@ -385,214 +403,75 @@ int main(int argc, char* argv[])
 			}
 
 			// Send the data to the Programm on the robot Control
-			RobotSocket->Send(bufferSendtoRobot, SendData_size );
+			if(mReceivedData||mState==6)RobotSocket->Send(bufferSendtoRobot, SendData_size );
 
-			//Recieving Data from the Robot 
-			int r =RobotSocket->Receive(bufferRecievefrmRobot, 128);// RcvData_size);
+			//Recieving Data from the Robot if new State was send or the Current Pose is send
+			if(mReceivedData || mState==6){
+				int r =RobotSocket->Receive(bufferRecievefrmRobot, 128);// RcvData_size);
 
-			RcvDataType = bufferRecievefrmRobot[0];
-			std::cerr <<"Datatype Recieved from Robot: "<< RcvDataType<< std::endl;
-			
-			mRcvState = bufferRecievefrmRobot[1];
-			std::cerr <<"RecievedState from Robot: "<< mRcvState<< std::endl;
-			
-			if(mRcvState!=mState){
-					//Some Debugging
-					std::cerr << "Cannot change Robot State to " << mState << std::endl;
-					mState=mOldState;
-					std::cerr << "Reseted Robot State to " << mState << std::endl;
-			}
-			//Datatype is Transform
-			if (RcvDataType == 'T'){
+				RcvDataType = bufferRecievefrmRobot[0];
+				std::cerr <<"Datatype Recieved from Robot: "<< RcvDataType<< std::endl;
 				
-				//IGT Matrix type to send the data to 3D Slicer
-				igtl::Matrix4x4 matrix;
-				double tmpDouble;
-				//reinterpret the data
-				for( int m = 0; m<3; m++){
-					for(int n =0; n<4; n++){
-						memcpy(&tmpDouble,&bufferRecievefrmRobot[3+(m*4+n)*sizeof(double)],sizeof(double));
-						matrix[m][n] = tmpDouble;
+				mRcvState = bufferRecievefrmRobot[1];
+				std::cerr <<"RecievedState from Robot: "<< mRcvState<< std::endl;
+				
+				if(mRcvState!=mState){
+						//Some Debugging
+						std::cerr << "Cannot change Robot State to " << mState << std::endl;
+						mState=mOldState;
+						std::cerr << "Reseted Robot State to " << mState << std::endl;
+				}
+				//Datatype is Transform
+				if (RcvDataType == 'T'){
+					
+					//IGT Matrix type to send the data to 3D Slicer
+					igtl::Matrix4x4 matrix;
+					double tmpDouble;
+					//reinterpret the data
+					for( int m = 0; m<3; m++){
+						for(int n =0; n<4; n++){
+							memcpy(&tmpDouble,&bufferRecievefrmRobot[3+(m*4+n)*sizeof(double)],sizeof(double));
+							matrix[m][n] = tmpDouble;
+						}
 					}
-				}
-				matrix[3][0] = 0;
-				matrix[3][1] = 0;
-				matrix[3][2] = 0;
-				matrix[3][3] = 1;
-				transMsg->SetMatrix(matrix);
-				transMsg->Pack();
-				std::cerr<< "T_Current Pose from Robot:" <<std::endl;
-				std::cerr<<matrix[0][0] <<"	" << matrix[0][1] << "	"     <<matrix[0][2] <<"	" <<matrix[0][3] << std::endl;
-				std::cerr <<  matrix[1][0] <<"	" << matrix[1][1] << "	" <<matrix[1][2] <<"	" <<matrix[1][3] << std::endl;
-				std::cerr <<  matrix[2][0] <<"	" << matrix[2][1] << "	" <<matrix[2][2] <<"	" << matrix[2][3] <<std::endl;
-				std::cerr <<  matrix[3][0] <<"	" << matrix[3][1] << "	" <<matrix[3][2] <<"	" <<matrix[3][3] << std::endl;
-				SlicerSocket->Send(transMsg->GetPackPointer(), transMsg->GetPackSize());
+					matrix[3][0] = 0;
+					matrix[3][1] = 0;
+					matrix[3][2] = 0;
+					matrix[3][3] = 1;
+					transMsg->SetMatrix(matrix);
+					transMsg->Pack();
+					std::cerr<< "T_Current Pose from Robot:" <<std::endl;
+					std::cerr<<matrix[0][0] <<"	" << matrix[0][1] << "	"     <<matrix[0][2] <<"	" <<matrix[0][3] << std::endl;
+					std::cerr <<  matrix[1][0] <<"	" << matrix[1][1] << "	" <<matrix[1][2] <<"	" <<matrix[1][3] << std::endl;
+					std::cerr <<  matrix[2][0] <<"	" << matrix[2][1] << "	" <<matrix[2][2] <<"	" << matrix[2][3] <<std::endl;
+					std::cerr <<  matrix[3][0] <<"	" << matrix[3][1] << "	" <<matrix[3][2] <<"	" <<matrix[3][3] << std::endl;
+					SlicerSocket->Send(transMsg->GetPackPointer(), transMsg->GetPackSize());
 
-			}else if (RcvDataType == 'R'){ //Registration Points from Robot
+				}else if (RcvDataType == 'R'){ //Registration Points from Robot
+					std::string NameStr;
 
-				//reinterpret the data
-				for( int m = 0; m<pointstoregister; m++){
-					for(int n =0; n<3; n++){
-						memcpy(&RegPoints[m][n],&bufferRecievefrmRobot[3+(m*3+n)*sizeof(double)],sizeof(double));
+					//reinterpret the data
+					for( int m = 0; m<pointstoregister; m++){
+						for(int n =0; n<3; n++){
+							memcpy(&RegPoints[m][n],&bufferRecievefrmRobot[3+(m*3+n)*sizeof(double)],sizeof(double));
+						}
 					}
+					 // If not correct, print usage
+					std::cerr<< "Point 1: X " << RegPoints[0][0] <<" Y " << RegPoints[0][1] << "Z" <<RegPoints[0][2] << std::endl;
+					std::cerr << "Point 2: X " << RegPoints[1][0] <<" Y " << RegPoints[1][1] << "Z" <<RegPoints[1][2] << std::endl;
+					std::cerr << "Point 3: X " << RegPoints[2][0] <<" Y " << RegPoints[2][1] << "Z" <<RegPoints[2][2] << std::endl;
+					std::cerr << "Point 4: X " << RegPoints[3][0] <<" Y " << RegPoints[3][1] << "Z" <<RegPoints[3][2] << std::endl;
+
+
+					SendRegistrationPoints(SlicerSocket, RegPoints, mUID);
+					
+
+				}else if(RcvDataType == 'S'){
+					
+					SendString(SlicerSocket, bufferRecievefrmRobot, mUID);
 				}
-				 // If not correct, print usage
-				std::cerr<< "Point 1: X " << RegPoints[0][0] <<" Y " << RegPoints[0][1] << "Z" <<RegPoints[0][2] << std::endl;
-				std::cerr << "Point 2: X " << RegPoints[1][0] <<" Y " << RegPoints[1][1] << "Z" <<RegPoints[1][2] << std::endl;
-				std::cerr << "Point 3: X " << RegPoints[2][0] <<" Y " << RegPoints[2][1] << "Z" <<RegPoints[2][2] << std::endl;
-				std::cerr << "Point 4: X " << RegPoints[3][0] <<" Y " << RegPoints[3][1] << "Z" <<RegPoints[3][2] << std::endl;
-
-				      //---------------------------
-				  // Create a point message
-				  igtl::PointMessage::Pointer pointMsg;
-				  pointMsg = igtl::PointMessage::New();
-				  pointMsg->SetDeviceName("Robot");
-			      
-				  //---------------------------
-				  // Create 1st point
-				  igtl::PointElement::Pointer RegPoint0;
-				  RegPoint0 = igtl::PointElement::New();
-				  RegPoint0->SetName("POINT_0");
-				  RegPoint0->SetGroupName("Registration");
-				  RegPoint0->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
-				  RegPoint0->SetPosition(RegPoints[0][0], RegPoints[0][1], RegPoints[0][2]);
-				  RegPoint0->SetRadius(8.0);
-				  RegPoint0->SetOwner("IMAGE_0");
-			      
-				  //---------------------------
-				  // Create 2nd point
-				  igtl::PointElement::Pointer RegPoint1;
-				  RegPoint1 = igtl::PointElement::New();
-				  RegPoint1->SetName("POINT_1");
-				  RegPoint1->SetGroupName("Registration");
-				  RegPoint1->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
-				  RegPoint1->SetPosition(RegPoints[1][0], RegPoints[1][1], RegPoints[1][2]);
-				  RegPoint1->SetRadius(8.0);
-				  RegPoint1->SetOwner("IMAGE_0");
-			      
-				  //---------------------------
-				  // Create 3rd point
-				  igtl::PointElement::Pointer RegPoint2;
-				  RegPoint2 = igtl::PointElement::New();
-				  RegPoint2->SetName("POINT_2");
-				  RegPoint2->SetGroupName("Registration");
-				  RegPoint2->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
-				  RegPoint2->SetPosition(RegPoints[2][0], RegPoints[2][1], RegPoints[2][2]);
-				  RegPoint2->SetRadius(8.0);
-				  RegPoint2->SetOwner("IMAGE_0");
-			      
-				   //---------------------------
-				  // Pack into the point message
-				  pointMsg->AddPointElement(RegPoint0);
-				  pointMsg->AddPointElement(RegPoint1);
-				  pointMsg->AddPointElement(RegPoint2);
-
-				  if(pointstoregister>3){
-						  //---------------------------
-					  // Create 4th point
-					  igtl::PointElement::Pointer RegPoint3;
-					  RegPoint3 = igtl::PointElement::New();
-					  RegPoint3->SetName("POINT_3");
-					  RegPoint3->SetGroupName("Registration");
-					  RegPoint3->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
-					  RegPoint3->SetPosition(RegPoints[3][0], RegPoints[3][1], RegPoints[3][2]);
-					  RegPoint3->SetRadius(8.0);
-					  RegPoint3->SetOwner("IMAGE_0");
-					  pointMsg->AddPointElement(RegPoint3);
-			      
-					  if(pointstoregister>4){
-						  //---------------------------
-						  // Create 5th point
-						  igtl::PointElement::Pointer RegPoint4;
-						  RegPoint4 = igtl::PointElement::New();
-						  RegPoint4->SetName("POINT_4");
-						  RegPoint4->SetGroupName("Registration");
-						  RegPoint4->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
-						  RegPoint4->SetPosition(RegPoints[4][0], RegPoints[4][1], RegPoints[4][2]);
-						  RegPoint4->SetRadius(8.0);
-						  RegPoint4->SetOwner("IMAGE_0");
-						  pointMsg->AddPointElement(RegPoint4);
-			      
-						  if(pointstoregister>5){
-										  //---------------------------
-							  // Create 6th point
-							  igtl::PointElement::Pointer RegPoint5;
-							  RegPoint5 = igtl::PointElement::New();
-							  RegPoint5->SetName("POINT_5");
-							  RegPoint5->SetGroupName("Registration");
-							  RegPoint5->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
-							  RegPoint5->SetPosition(RegPoints[5][0], RegPoints[5][1], RegPoints[5][2]);
-							  RegPoint5->SetRadius(8.0);
-							  RegPoint5->SetOwner("IMAGE_0");
-							  pointMsg->AddPointElement(RegPoint5);
-			      
-							  if(pointstoregister>6){
-								  std::cerr<<"more than 6 Points are not supported!!"<<std::endl;
-							  }
-						  }
-					  }
-				  }
-				 
-				  pointMsg->Pack();
-			      
-				  //---------------------------
-				  // Send
-				  if(SlicerSocket.IsNotNull())SlicerSocket->Send(pointMsg->GetPackPointer(), pointMsg->GetPackSize());
-
-			}else if(RcvDataType == 'S'){
-
-				std::string tmpStringMsg;
-				switch(mState){
-					case 0://IDLE
-						tmpStringMsg="IDLE;";
-						break;
-					case 1://Registration
-						if(bufferRecievefrmRobot[2] ==0){
-							tmpStringMsg = "Registration;false;";
-						}else if(bufferRecievefrmRobot[2] ==1){
-							tmpStringMsg = "Registration;true;";
-						}
-						break;
-					case 2://SendData
-						tmpStringMsg = "SendData;";
-						break;
-					case 3://WaitforTCTBase
-						//Mirroring State + if the Transform is received
-						if(bufferRecievefrmRobot[2] ==0){
-							tmpStringMsg = "WaitforTCTBase;false;";
-						}else if(bufferRecievefrmRobot[2] ==1){
-							tmpStringMsg = "WaitforTCTBase;true;";
-						}
-						break;
-					case 4://GravComp
-						tmpStringMsg = "GravComp;";
-						break;
-					case 5://VirtualFixtures
-						//Mirroring State + the type
-						if(mVFtype ==0){
-							tmpStringMsg = "VirtualFixtures;plane;";
-						}else if(mVFtype ==1){
-							tmpStringMsg = "VirtualFixtures;cone;";
-						}else{
-							tmpStringMsg = "VirtualFixtures;";
-						}
-						break;
-					case 6://NavGravComp
-						tmpStringMsg = "NavGravComp;";
-						break;
-					case 7://NavGravCompVF
-						tmpStringMsg = "NavGravCompVF;";
-						break;
-					default:
-						break;
-				}
-
-						stringMsg->SetString(tmpStringMsg);
-						stringMsg->Pack();
-						SlicerSocket->Send(stringMsg->GetPackPointer(), stringMsg->GetPackSize());
-
 			}
-        }
+		}
       }
     
   //------------------------------------------------------------
@@ -604,10 +483,13 @@ int main(int argc, char* argv[])
 }
 
 
+
+
 int ReceiveTransform(igtl::Socket * socket, igtl::MessageHeader * header)
 {
   std::cerr << "Receiving TRANSFORM data type." << std::endl;
-  
+
+  std::string NameString;
   // Create a message buffer to receive transform data
   igtl::TransformMessage::Pointer transMsg;
   transMsg = igtl::TransformMessage::New();
@@ -627,6 +509,11 @@ int ReceiveTransform(igtl::Socket * socket, igtl::MessageHeader * header)
     igtl::Matrix4x4 matrix;
     transMsg->GetMatrix(matrix);
     igtl::PrintMatrix(matrix);
+	NameString=transMsg->GetDeviceName();
+
+
+	unsigned int pos =NameString.find("_");
+	mUID = NameString.substr(pos+1,NameString.length());
 
 	//Saving the Transform into T_CT_Case
 		for( int g=0; g<3; g++){
@@ -634,7 +521,7 @@ int ReceiveTransform(igtl::Socket * socket, igtl::MessageHeader * header)
 				T_CT_Base[h + g*4] = matrix[g][h];
 			}
 		}
-	
+	RecievedTransform=true;
 
     return 1;
     }
@@ -650,6 +537,7 @@ int ReceiveString(igtl::Socket * socket, igtl::MessageHeader * header)
   std::string RecvString;
   std::string Command;
   std::string TmpString;
+  std::string NameString;
   std::string tmpParam[12];
   int numberofparam=0;
   std::cerr << "Receiving STRING data type." << std::endl;
@@ -665,15 +553,18 @@ int ReceiveString(igtl::Socket * socket, igtl::MessageHeader * header)
   // Deserialize the transform data
   // If you want to skip CRC check, call Unpack() without argument.
   int c = stringMsg->Unpack(1);
-
+	
   if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
     {
 		std::cerr << "Encoding: " << stringMsg->GetEncoding() << "; "
 				  << "String: " << stringMsg->GetString() << std::endl;
 		RecvString = stringMsg->GetString();
+		NameString = stringMsg->GetDeviceName();
+		unsigned int pos =NameString.find("_");
+		mUID = NameString.substr(pos+1,NameString.length());
 		TmpString = RecvString;
 		std::cerr<<"Received String: " <<RecvString<<std::endl;
-		unsigned int pos = RecvString.find(";");
+		pos = RecvString.find(";");
 		Command = TmpString.substr(0, pos);
 		while((pos+1)<TmpString.length()){
 			TmpString = TmpString.substr(pos+1);
@@ -777,4 +668,172 @@ int ReceiveString(igtl::Socket * socket, igtl::MessageHeader * header)
 }
 #endif //OpenIGTLink_PROTOCOL_VERSION >= 2
 
+int SendRegistrationPoints(igtl::Socket * socket, double Points[6][3], std::string mUID){
+	std::string NameStr;
+	 NameStr= "ACK" +mUID;
 
+
+	      //---------------------------
+	  // Create a point message
+	  igtl::PointMessage::Pointer pointMsg;
+	  pointMsg = igtl::PointMessage::New();
+	  pointMsg->SetDeviceName(NameStr.data());
+      
+	  //---------------------------
+	  // Create 1st point
+	  igtl::PointElement::Pointer RegPoint0;
+	  RegPoint0 = igtl::PointElement::New();
+	  RegPoint0->SetName("POINT_0");
+	  RegPoint0->SetGroupName("Registration");
+	  RegPoint0->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
+	  RegPoint0->SetPosition(Points[0][0], Points[0][1], Points[0][2]);
+	  RegPoint0->SetRadius(8.0);
+	  RegPoint0->SetOwner("IMAGE_0");
+      
+	  //---------------------------
+	  // Create 2nd point
+	  igtl::PointElement::Pointer RegPoint1;
+	  RegPoint1 = igtl::PointElement::New();
+	  RegPoint1->SetName("POINT_1");
+	  RegPoint1->SetGroupName("Registration");
+	  RegPoint1->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
+	  RegPoint1->SetPosition(Points[1][0], Points[1][1], Points[1][2]);
+	  RegPoint1->SetRadius(8.0);
+	  RegPoint1->SetOwner("IMAGE_0");
+      
+	  //---------------------------
+	  // Create 3rd point
+	  igtl::PointElement::Pointer RegPoint2;
+	  RegPoint2 = igtl::PointElement::New();
+	  RegPoint2->SetName("POINT_2");
+	  RegPoint2->SetGroupName("Registration");
+	  RegPoint2->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
+	  RegPoint2->SetPosition(Points[2][0], Points[2][1], Points[2][2]);
+	  RegPoint2->SetRadius(8.0);
+	  RegPoint2->SetOwner("IMAGE_0");
+      
+	   //---------------------------
+	  // Pack into the point message
+	  pointMsg->AddPointElement(RegPoint0);
+	  pointMsg->AddPointElement(RegPoint1);
+	  pointMsg->AddPointElement(RegPoint2);
+
+	  if(pointstoregister>3){
+			  //---------------------------
+		  // Create 4th point
+		  igtl::PointElement::Pointer RegPoint3;
+		  RegPoint3 = igtl::PointElement::New();
+		  RegPoint3->SetName("POINT_3");
+		  RegPoint3->SetGroupName("Registration");
+		  RegPoint3->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
+		  RegPoint3->SetPosition(Points[3][0], Points[3][1], Points[3][2]);
+		  RegPoint3->SetRadius(8.0);
+		  RegPoint3->SetOwner("IMAGE_0");
+		  pointMsg->AddPointElement(RegPoint3);
+      
+		  if(pointstoregister>4){
+			  //---------------------------
+			  // Create 5th point
+			  igtl::PointElement::Pointer RegPoint4;
+			  RegPoint4 = igtl::PointElement::New();
+			  RegPoint4->SetName("POINT_4");
+			  RegPoint4->SetGroupName("Registration");
+			  RegPoint4->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
+			  RegPoint4->SetPosition(Points[4][0], Points[4][1], Points[4][2]);
+			  RegPoint4->SetRadius(8.0);
+			  RegPoint4->SetOwner("IMAGE_0");
+			  pointMsg->AddPointElement(RegPoint4);
+      
+			  if(pointstoregister>5){
+							  //---------------------------
+				  // Create 6th point
+				  igtl::PointElement::Pointer RegPoint5;
+				  RegPoint5 = igtl::PointElement::New();
+				  RegPoint5->SetName("POINT_5");
+				  RegPoint5->SetGroupName("Registration");
+				  RegPoint5->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
+				  RegPoint5->SetPosition(Points[5][0], Points[5][1], Points[5][2]);
+				  RegPoint5->SetRadius(8.0);
+				  RegPoint5->SetOwner("IMAGE_0");
+				  pointMsg->AddPointElement(RegPoint5);
+      
+				  if(pointstoregister>6){
+					  std::cerr<<"more than 6 Points are not supported!!"<<std::endl;
+				  }
+			  }
+		  }
+	  }
+	 
+	  pointMsg->Pack();
+      
+	  //---------------------------
+	  // Send
+	  int r = socket->Send(pointMsg->GetPackPointer(), pointMsg->GetPackSize());
+	  return r;
+}
+
+int SendString(igtl::Socket * socket, unsigned char buffer[],std::string mUID){
+
+		igtl::StringMessage::Pointer stringMsg;
+		stringMsg = igtl::StringMessage::New();
+
+		std::string tmpStringMsg;
+		std::string NameStr;
+		switch(mState){
+			case 0://IDLE
+				tmpStringMsg="IDLE;";
+				break;
+			case 1://Registration
+				if(buffer[2] ==0){
+					tmpStringMsg = "Registration;false;";
+				}else if(buffer[2] ==1){
+					tmpStringMsg = "Registration;true;";
+				}
+				NameStr = "ACK_" + mUID;
+				break;
+			case 2://SendData
+				tmpStringMsg = "SendData;";
+				NameStr = "ACK_" + mUID;
+				break;
+			case 3://WaitforTCTBase
+				//Mirroring State + if the Transform is received
+				if(buffer[2] ==0){
+					tmpStringMsg = "WaitforTCTBase;false;";
+				}else if(buffer[2] ==1){
+					tmpStringMsg = "WaitforTCTBase;true;";
+				}
+				NameStr = "CMD_" + mUID;
+				break;
+			case 4://GravComp
+				tmpStringMsg = "GravComp;";
+				NameStr = "ACK_" + mUID;
+				break;
+			case 5://VirtualFixtures
+				//Mirroring State + the type
+				if(mVFtype ==0){
+					tmpStringMsg = "VirtualFixtures;plane;";
+				}else if(mVFtype ==1){
+					tmpStringMsg = "VirtualFixtures;cone;";
+				}else{
+					tmpStringMsg = "VirtualFixtures;";
+				}
+				NameStr = "ACK_" + mUID;
+				break;
+			case 6://NavGravComp
+				tmpStringMsg = "NavGravComp;";
+				NameStr = "ACK_" + mUID;
+				break;
+			case 7://NavGravCompVF
+				tmpStringMsg = "NavGravCompVF;";
+				NameStr = "ACK_" + mUID;
+				break;
+			default:
+				break;
+		}
+
+		stringMsg->SetString(tmpStringMsg);
+		stringMsg->SetDeviceName(NameStr.data());
+		stringMsg->Pack();
+		int r= socket->Send(stringMsg->GetPackPointer(), stringMsg->GetPackSize());
+		return r;
+}

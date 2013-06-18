@@ -56,6 +56,7 @@ public class SimRobotApp {
 		static boolean DataSend=false;
 		static boolean RecievedT_CT_Base= false;
 		static boolean mfirstStep=false;
+		static boolean ReceivedData=false;
 		
 		//Some Variables for Stiffness Control
 		static double mdistance;
@@ -369,13 +370,17 @@ public class SimRobotApp {
 		 //Reading Current state
 		public static int GetCurrentState(){
 			 byte[] buffer= new byte [128];
-
 			// Reading data from Socket
 	        try {
 				in.read(buffer, 0, 128);
+				ReceivedData = true;
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
-				e.printStackTrace();
+				//e.printStackTrace();
+				//Set the Flag ReicievedData=false
+				ReceivedData = false;
+				//If no data could be read set State to OldState 
+				return mCurrentState;
 			}
 	        
 	        if(buffer[1] == 5)//State is Virtual Fixtures then the VF Definition is send as well
@@ -425,18 +430,23 @@ public class SimRobotApp {
 	        	}
 	        }else if(buffer[1] == 3)//State is WaitforTCtBase
 	        {
+	        	if(buffer[2]==1){
 	        	double[] tmpMatrix = new double [12];
-	        	byte [] tmpArray = new byte [8];
-	        	for (int m=0; m<12; m++){
-	        		for(int n=0; n<8; n++){
-	        			tmpArray[7-n]= buffer[2 + m*8+n];
-	        		}
-	        		tmpMatrix[m] = ByteBuffer.wrap(tmpArray).getDouble();		
+		        	byte [] tmpArray = new byte [8];
+		        	for (int m=0; m<12; m++){
+		        		for(int n=0; n<8; n++){
+		        			tmpArray[7-n]= buffer[3 + m*8+n];
+		        		}
+		        		tmpMatrix[m] = ByteBuffer.wrap(tmpArray).getDouble();		
+		        	}
+		        	RecievedT_CT_Base=true;
+		        	T_CT_Base= MatrixTransformation.of(Vector.of(tmpMatrix[3],tmpMatrix[7], tmpMatrix[11]), Matrix.ofRowFirst(tmpMatrix[0], tmpMatrix[1], tmpMatrix[2], tmpMatrix[4], tmpMatrix[5], tmpMatrix[6], tmpMatrix[8], tmpMatrix[9], tmpMatrix[10]));
+		        	//Check if the determinant of the Rotation Matrix is 1 and that the flag
+		        	if(T_CT_Base.getRotationMatrix().determinant()==1)
+		        		RecievedT_CT_Base=true;
+	        	}else{
+	        		RecievedT_CT_Base=false;
 	        	}
-	        	T_CT_Base= MatrixTransformation.of(Vector.of(tmpMatrix[3],tmpMatrix[7], tmpMatrix[11]), Matrix.ofRowFirst(tmpMatrix[0], tmpMatrix[1], tmpMatrix[2], tmpMatrix[4], tmpMatrix[5], tmpMatrix[6], tmpMatrix[8], tmpMatrix[9], tmpMatrix[10]));
-	        	//Check if the determinant of the Rotation Matrix is 1 and that the flag
-	        	if(T_CT_Base.getRotationMatrix().determinant()==1)
-	        		RecievedT_CT_Base=true;
 	        }else if(buffer[1] == 1){//State is Registration
 	        	//Set number of points for Registration
 	        	pointstoregister = buffer[2];
@@ -459,7 +469,7 @@ public class SimRobotApp {
 				 else out_array[3]=0;
 				 
 			 }if(mCurrentState == 3) {//State is Wait for T_CT_Base=> send flag ReceivedT_CT_Base
-				 if(RecievedT_CT_Base)out_array[2] = 1;
+				 if(RecievedT_CT_Base)out_array[3] = 1;
 				 else out_array[3]=0;
 			 }
 			//Sending bytearray via socket
@@ -642,11 +652,11 @@ public class SimRobotApp {
 						j=0;
 					}
 					mError = 0;
-					if(ProxySocket.isConnected())SendCurrentState();
+					if(ProxySocket.isConnected() && ReceivedData == true)SendCurrentState();
 					break;
 
 				case 1: //State Registration
-					if(mOldState == 0 || mOldState == 2 ||mOldState==3) {
+					if(mOldState == 0 || mOldState == 2 ||mOldState==3 || mOldState==1) {
 						if (mOldState != mCurrentState) {
 							mfirstStep = true;
 							DataSend = false;
@@ -677,20 +687,22 @@ public class SimRobotApp {
 						mError = 1;
 					}
 
-					if(ProxySocket.isConnected())SendCurrentState();
+					if(ProxySocket.isConnected()&& ReceivedData == true)SendCurrentState();
 				
 				break;
 				
 				case 2: //State SendData
 				if((mOldState == 1|| mOldState==2) && RegistrationFinished==true){
-					System.out.println("Sending Data");
+					if (mOldState != mCurrentState) {
+						System.out.println("Sending Data");
+					}
 					mError = 0;
-					DataSend =  SendRegistrationData(mCurrentState, RegPoints,registeredpoints );
+					if(ProxySocket.isConnected()&& ReceivedData == true)DataSend =  SendRegistrationData(mCurrentState, RegPoints,registeredpoints );
 					mOldState = mCurrentState;
 				}else{
 					mCurrentState=mOldState;
 					mError = 1;
-					if(ProxySocket.isConnected())SendCurrentState();
+					if(ProxySocket.isConnected()&& ReceivedData == true)SendCurrentState();
 
 				}
 				break;
@@ -707,7 +719,7 @@ public class SimRobotApp {
 						 mCurrentState= mOldState;
 						 RecievedT_CT_Base =false;
 					}
-					if(ProxySocket.isConnected())SendCurrentState();
+					if(ProxySocket.isConnected() && ReceivedData == true)SendCurrentState();
 					break;
 		
 				case 4://GravComp
@@ -719,7 +731,7 @@ public class SimRobotApp {
 						mOldState = mCurrentState;
 						GravComp(mfirstStep );	
 						mError = 0;
-						if(ProxySocket.isConnected())SendCurrentState();
+						if(ProxySocket.isConnected()&& ReceivedData == true)SendCurrentState();
 					break;
 		
 				case 5://Virtual Fixtures
@@ -742,7 +754,7 @@ public class SimRobotApp {
 					}else{
 						mError = 1;
 					}
-					if(ProxySocket.isConnected())SendCurrentState();
+					if(ProxySocket.isConnected()&& ReceivedData == true)SendCurrentState();
 					break;
 		
 				case 6://NavGravComp
@@ -753,14 +765,14 @@ public class SimRobotApp {
 						}
 						else mfirstStep = false;
 						mOldState = mCurrentState;
-						GravComp(mfirstStep );
-						System.out.println("NavGravComp");
+						GravComp(mfirstStep);
 						mError=0;
 						if(ProxySocket.isConnected())SendTransform(MatrixTransformation.of(curMsrCartPose.getTranslation(), curMsrCartPose.getRotation()));
 					}else{
 						mError = 1;
-						if(ProxySocket.isConnected())SendCurrentState();
+						if(ProxySocket.isConnected()&& ReceivedData == true)SendCurrentState();
 					}
+					break;
 				case 7://NavGravCompVF
 					if(RecievedT_CT_Base == true){
 						mOldState = mCurrentState;
@@ -781,14 +793,14 @@ public class SimRobotApp {
 						
 					}else{
 						mError = 1;
-						if(ProxySocket.isConnected())SendCurrentState();
+						if(ProxySocket.isConnected()&& ReceivedData == true)SendCurrentState();
 					}
 					break;
 			default:
 				System.out.println("Unknown State Request");
 				mCurrentState = 0;
 				mError = 1;
-				if(ProxySocket.isConnected())SendCurrentState();
+				if(ProxySocket.isConnected()&& ReceivedData == true)SendCurrentState();
 				break;
 			}
 			// Overall timing end
