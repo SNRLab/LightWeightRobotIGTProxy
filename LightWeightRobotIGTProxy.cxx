@@ -446,7 +446,7 @@ int main(int argc, char* argv[])
 					std::cerr <<  matrix[2][0] <<"	" << matrix[2][1] << "	" <<matrix[2][2] <<"	" << matrix[2][3] <<std::endl;
 					std::cerr <<  matrix[3][0] <<"	" << matrix[3][1] << "	" <<matrix[3][2] <<"	" <<matrix[3][3] << std::endl;
 					SlicerSocket->Send(transMsg->GetPackPointer(), transMsg->GetPackSize());
-
+					SendString(SlicerSocket, bufferRecievefrmRobot, mUID);
 				}else if (RcvDataType == 'R'){ //Registration Points from Robot
 					std::string NameStr;
 
@@ -802,7 +802,7 @@ int SendString(igtl::Socket * socket, unsigned char buffer[],std::string mUID){
 				}else if(buffer[2] ==1){
 					tmpStringMsg = "WaitforTCTBase;true;";
 				}
-				NameStr = "CMD_" + mUID;
+				NameStr = "ACK_" + mUID;
 				break;
 			case 4://GravComp
 				tmpStringMsg = "GravComp;";
@@ -820,8 +820,8 @@ int SendString(igtl::Socket * socket, unsigned char buffer[],std::string mUID){
 				NameStr = "ACK_" + mUID;
 				break;
 			case 6://NavGravComp
-				tmpStringMsg = "NavGravComp;";
-				NameStr = "ACK_" + mUID;
+				tmpStringMsg = "NavGravComp;0;";
+				NameStr = "CMD_" + mUID;
 				break;
 			case 7://NavGravCompVF
 				tmpStringMsg = "NavGravCompVF;";
